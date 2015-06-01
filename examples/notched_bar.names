@@ -1,0 +1,7 @@
+! ----- names for bodies -----
+$ base_right = 1
+$ base_left = 2
+$ top_ctr = 3
+$ body4 = 4
+! ----- names for boundaries -----
+$ bnry4 = 4

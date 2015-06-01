@@ -1,0 +1,12 @@
+! ----- names for bodies -----
+$ base = 1
+$ top = 2
+$ back_upper = 3
+$ back_lower = 4
+$ crack = 5
+$ right = 7
+$ left = 8
+$ front = 9
+! ----- names for boundaries -----
+$ crack_tip = 6
+$ bnry10 = 10
