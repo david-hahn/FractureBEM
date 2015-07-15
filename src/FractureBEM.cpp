@@ -131,9 +131,10 @@ namespace FractureSim{
 		if(ret!=0) return ret;
         //printf("\n%% ... ... surface stresses done");
 
-		typedef std::multimap<double, unsigned int> mm_t; mm_t mm;
+		typedef std::multimap<double, long> mm_t; mm_t mm; // map stress excess to SIGNED element ID
 		vect3d_map stressNormals;
-        /** // node based version
+		std::set<unsigned int> negSidesMax, negSidesMin; // store which cracks should start in the reversed direction (branches from the "negative" fracture surface)
+        /** // node based version --- THIS IS OUTDATED AND SHOULD NOT BE USED
 		vect3d_map nodeNormals;
 		for(node_map::iterator it=psn.begin(); it!=psn.end(); ++it){
 			Eigen::Vector3d p(nodes[it->first][0], nodes[it->first][1], nodes[it->first][2]);
@@ -197,21 +198,30 @@ namespace FractureSim{
 				ctNodes.count(elems[it->first][0])==0 && // don't fracture elements node-adjacent to the crack tip
 				ctNodes.count(elems[it->first][1])==0 &&
 				ctNodes.count(elems[it->first][2])==0 ){ // candidate element to seed a crack
-				mm.insert(mm_t::value_type(it->second[0]-materialModel->tensileStrength(c),it->first)); // insert into multimap -> sort by stress value asc.
+				mm.insert(mm_t::value_type(it->second[0]-materialModel->tensileStrength(c),it->first)); // insert into multimap -> sort by stress excess asc.
                 Eigen::Vector3d	n(it->second[1],it->second[2],it->second[3]);
                 stressNormals[it->first]=n;
+				if( it->second.size()>8){ // check for negative side flag on max. principal stress (2 or 4)
+					if( std::abs(it->second[8]-2.0)<0.1 || std::abs(it->second[8]-4.0)<0.1 ){
+						negSidesMax.insert(it->first);
+					}
+				}
 			}
-            // compressive fracture seeding works if computeSurfaceStresses returns min. principal stress along with max. ps.
-            if(it->second.size()>7)
+			if(it->second.size()>7) // compressive fracture seeding works if computeSurfaceStresses returns min. principal stress along with max. ps.
                 if( fracturedElems.count(it->first)==0 && // don't fracture more than once in the same location
                     ctNodes.count(elems[it->first][0])==0 && // don't fracture elements node-adjacent to the crack tip
                     ctNodes.count(elems[it->first][1])==0 &&
                     ctNodes.count(elems[it->first][2])==0 &&
                     -it->second[4] > materialModel->tensileStrength(c)*materialModel->compressiveFactor(c)
                 ){ // candidate to seed a crack
-                    mm.insert(mm_t::value_type((-it->second[4]/materialModel->compressiveFactor(c))-materialModel->tensileStrength(c),it->first)); // insert into multimap -> sort by stress value asc.
+                    mm.insert(mm_t::value_type((-it->second[4]/materialModel->compressiveFactor(c))-materialModel->tensileStrength(c),-(it->first))); // insert negative elem-ID into multimap -> sort by stress excess asc.
                     Eigen::Vector3d	n(it->second[5],it->second[6],it->second[7]);
                     stressNormals[it->first]=n;
+					if( it->second.size()>8){ // check for negative side flag on min. principal stress (3 or 4)
+						if( std::abs(it->second[8]-3.0)<0.1 || std::abs(it->second[8]-4.0)<0.1 ){
+							negSidesMin.insert(it->first);
+						}
+					}
                 }
 
 		}
@@ -219,11 +229,15 @@ namespace FractureSim{
 
 		// reverse-iterate candidates (max stress first),     create at most this --v number of cracks (maxSeed < 0 is unlimited)
         for(mm_t::reverse_iterator it=mm.rbegin(); it!=mm.rend() && ((newCracks < maxSeed) || (maxSeed<0)); ++it){
-			if(checkDistanceEl(it->second,ctNodes)){ // check whether the element is far enough from all crack-tip nodes
+			unsigned int elem = std::abs(it->second);
+			bool negSide=false;
+			if(checkDistanceEl(elem,ctNodes)){ // check whether the element is far enough from all crack-tip nodes
                 //printf("\n%% ... ... seeding from element %d", it->second);
-				ret = startCrack(it->second,stressNormals[it->second]);
+				if(it->second > 0 && negSidesMax.count(elem)>0) negSide=true;
+				if(it->second < 0 && negSidesMin.count(elem)>0) negSide=true;
+				ret = startCrack(elem,stressNormals[elem],negSide);
 				if(ret!=0) return -1;
-				fracturedElems.insert(it->second); // don't fracture this element again
+				fracturedElems.insert(elem); // don't fracture this element again
 				++newCracks;
 			}
 			ctNodes = nodeSet(crackTips);
@@ -449,7 +463,7 @@ namespace FractureSim{
 		return ret;
 	}
 
-	int FractureBEM::startCrack(unsigned int elem, Eigen::Vector3d normal){
+	int FractureBEM::startCrack(unsigned int elem, Eigen::Vector3d normal, bool negSide){
 		if(!fractureInitialized) return -1;
 		// to add a crack do the following:
 		// - find an anchor point (i.e. the centre of the given element)
@@ -473,6 +487,7 @@ namespace FractureSim{
         
         normal.normalize(); // just to be sure it's a unit vector
 		f=-(a-c).cross(b-c).normalized(); // start with the (inward==negative) face-normal of the triangle
+		if(negSide) f*=-1.0;
 		f-=f.dot(normal)*normal; // remove out-of-plane component
 		if( f.dot(f) < FLT_EPSILON ) return -1; // if f and normal are almost-parallel the whole idea of starting such a crack is nonsense
 		f.normalize();
@@ -485,8 +500,11 @@ namespace FractureSim{
 		for(id_map::iterator it=regions.begin(); it!=regions.end(); ++it){
 			s=std::max(s,it->second); // find highest region-id in regions map
 		}
+		for(id_set::iterator it=cracks.begin(); it!=cracks.end(); ++it){
+			s=std::max(s,*it); // find highest region-id in cracks
+		}
 		++s; // this will be the next region-id
-        //printf(" with region %d", s);
+        //printf(" new crack region %d", s);
 
 		int ret = fineCrackTip->startCrack(
 			p+f*levelSet->getVoxelSize()*0.5,normal,f,s
@@ -509,10 +527,11 @@ namespace FractureSim{
 		return -1;
 	}
 
-	int FractureBEM::writeVDB(std::string filename){
+	int FractureBEM::writeVDB(std::string filename, bool updateSeeds){ //NEW FOR FractureRB: option to suppress updates when seeding cracks
         fineCrackTip->setFilename(filename);
 		if(vdbInitialized){
-			lastVDBfile = filename;
+			if( updateSeeds ) lastVDBfile = filename;
+			else lastVDBfile.clear();
 			return levelSet->writeGrids(filename);
 		}
 		return -1;
@@ -690,9 +709,11 @@ namespace FractureSim{
 		}
 		return -1;
 	}
-	
 	VDBWrapper& FractureBEM::getLevelSet(){
 		return *levelSet;
 		//return levelSet.get();
+	}
+	SubsampledCrackTip& FractureBEM::getHiResCrackTip(){
+		return *fineCrackTip;
 	}
 }

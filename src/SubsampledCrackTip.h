@@ -84,6 +84,18 @@ namespace FractureSim{
         void updateVertexStates();
 
 		inline unsigned int getVertsPerSegment(){return vertsPerSegment;}
+		
+		/* NEW FOR FractureRB:
+		 * Copy marker data from source to this object
+		 * sourceEdges lists which edges (wrt. the source's node numbering)
+		 * should be copied (if found in the source object)
+		 * targetNodes maps the source's to this object's node numbering
+		 * if resetState==true all marker states will be decided based on
+		 * whether they are inside of the level set's object grid
+		 * otherwise the state from the source will be copied
+		 */
+		int copyEdges(SubsampledCrackTip& source, edge_imap sourceEdges, id_map targetNodes, bool resetState=false);
+		
 	protected:
         static const double collapseThr; // collapse if edge is shorter than collapseThr*meshSize
         static const double subdivThr  ; // subdiv   if edge is longer  than subdivThr*meshSize

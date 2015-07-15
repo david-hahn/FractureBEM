@@ -1416,4 +1416,97 @@ namespace FractureSim{
 			}
 		}
     }
+	
+	int SubsampledCrackTip::copyEdges(SubsampledCrackTip& source, edge_imap sourceEdges, id_map targetNodes, bool resetState){
+		int copyCount=0;
+ 
+		// for each edge in sourceEdges
+		// -- check if it exists in source
+		// -- check if corresponding edge exists in this object (fwd. mapped through targetNodes)
+		// -- if both found
+		// -- check that both source and target edges are properly sampled
+		// -- copy marker positions, states, directions, etc.
+		
+		// for now we require that both source and target (this) have same vertsPerSegment
+		// -- otherwise (optional/for future work - not implemented yet)
+		// -- we could interpolate marker data along source curve
+		if( source.vertsPerSegment != vertsPerSegment ){
+			printf("\nSubsampledCrackTip::copyEdges: source and target objects must use the same number of markers per edge\n");
+			return -1;
+		}
+
+		// edge-sampling check:
+		//unsigned int vertA=nodeVerts[nd_a], vertB=nodeVerts[nd_b];
+		//unsigned int v=neighbors[vertA][1];
+		//if(v==vertB) ... ; // segment may have no interior nodes (inactive)
+		//for(int k=1; k<vertsPerSegment; ++k) v=neighbors[v][1];
+		//if(v!=vertB) printf("\npossibly inconsistent interpolation between nodes %d and %d, verts %d, %d, stopped at %d",nodeA,nodeB, vertA,vertB,v);
+
+		for(edge_imap::iterator ed_it=sourceEdges.begin(); ed_it!=sourceEdges.end(); ++ed_it){
+			unsigned int
+				srcA=ed_it->first.first,
+				srcB=ed_it->first.second;
+			unsigned int
+				tgtA=targetNodes[srcA],
+				tgtB=targetNodes[srcB];
+			unsigned int vsa,vsb,vta,vtb; // vertex ids for source and targes nodes
+			bool haveSrcEdg=false, haveTgtEdg=false;
+			// check source edge
+			if( source.nodeVerts.count(srcA)>0 &&
+				source.nodeVerts.count(srcB)>0
+			){ // have verts for source nodes
+				vsa=source.nodeVerts[srcA],
+				vsb=source.nodeVerts[srcB];
+				unsigned int v=source.neighbors[vsa][1];
+				//if(v==vertB) ... ; // segment may have no interior nodes (inactive)
+				for(int k=1; k<source.vertsPerSegment; ++k) v=source.neighbors[v][1];
+				if(v==vsb) haveSrcEdg=true; // found properly sampled source edge
+			}
+			// check target edge
+			if( haveSrcEdg &&
+				nodeVerts.count(tgtA)>0 &&
+				nodeVerts.count(tgtB)>0
+			){ // have verts for target nodes
+				vta=nodeVerts[tgtA],
+				vtb=nodeVerts[tgtB];
+				unsigned int v=neighbors[vta][1];
+				//if(v==vertB) ... ; // segment may have no interior nodes (inactive)
+				for(int k=1; k<vertsPerSegment; ++k) v=neighbors[v][1];
+				if(v==vtb) haveTgtEdg=true; // found properly sampled source edge
+			}
+			if( haveSrcEdg && haveTgtEdg ){
+				// now we can copy marker data ...
+				// we assume vertsPerSegment==source.vertsPerSegment !!!
+				unsigned int vs=vsa,vt=vta;
+				for(int k=0; k<=vertsPerSegment; ++k){
+					// copy data from source vertex (vs) to target (vt) ...
+					if( source.verts.count(vs)>0 )
+						verts[vt] = source.verts[vs];
+					if( resetState ) states[vt] = ACTIVE;
+					else if( source.states.count(vs)>0 )
+						states[vt] = source.states[vs];
+					if( source.direction.count(vs)>0 )
+						direction[vt]=source.direction[vs];
+					if( source.dir_min.count(vs)>0 )
+						dir_min[vt]=source.dir_min[vs];
+					if( source.dir_max.count(vs)>0 )
+						dir_max[vt]=source.dir_max[vs];
+
+					vs=source.neighbors[vs][1];
+					vt=neighbors[vt][1];
+				}
+				if( resetState ){
+					redistributeVertices(vta,vtb);
+					// reset the state after redistributing the vertices
+					vt=vta;
+					for(int k=0; k<=vertsPerSegment; ++k){
+						states[vt] = levelSet->isInside(verts[vt])?ACTIVE:INACTIVE;
+						vt=neighbors[vt][1];
+					}
+				}
+				++copyCount;
+			}
+		}
+		return copyCount;
+	}
 }

@@ -625,6 +625,39 @@ namespace FractureSim{
         }
 		return 0;
 	}
+	
+	// NEW FOR FractureRB
+	vdb::BBoxd VDBWrapper::getNearTris(const vdb::Vec3d& p, id_set& tris){
+		vdb::Coord c_p = nearTriXform->worldToIndexCellCentered(p);
+		IdSetGrid::ConstAccessor nearTri = nearTriGrid->getConstAccessor();
+		id_set& nearTris = nearTri.getValue(c_p).get();
+		// copy to output param
+		tris.clear();
+		tris.insert(nearTris.begin(), nearTris.end());
+		
+		vdb::Vec3d
+			p_c_p = nearTriXform->indexToWorld(c_p),
+			halfVoxel = nearTriXform->voxelSize()*0.5;
+		vdb::BBoxd voxelBBoxWorld(
+			p_c_p-halfVoxel,
+			p_c_p+halfVoxel
+		);
+		
+//		//debug output
+//		printf("near-tri lookup:\n"
+//			   " :: input point \t(%.3lf, %.3lf, %.3lf)\n"
+//			   " :: mapped coord\t(%d, %d, %d)\n"
+//			   " :: in world    \t(%.3lf, %.3lf, %.3lf)\n"
+//			   " :: bbox min    \t(%.3lf, %.3lf, %.3lf)\n"
+//			   " :: bbox max    \t(%.3lf, %.3lf, %.3lf)\n",
+//				p[0],p[1],p[2],
+//				c_p[0],c_p[1],c_p[2],
+//				p_c_p[0],p_c_p[1],p_c_p[2],
+//				voxelBBoxWorld.min()[0],voxelBBoxWorld.min()[1],voxelBBoxWorld.min()[2],
+//				voxelBBoxWorld.max()[0],voxelBBoxWorld.max()[1],voxelBBoxWorld.max()[2]
+//		);
+		return voxelBBoxWorld;
+	}
 
 	// NEW FOR FractureRB
 	unsigned int VDBWrapper::findClosestSurfaceTri(const Eigen::Vector3d& p,
@@ -659,21 +692,35 @@ namespace FractureSim{
         }
 		return closestTri;
 	}
-	
+
 	// NEW FOR FractureRB
 	std::vector<vdb::FloatGrid::Ptr> VDBWrapper::getSegments(double handleThreshold, bool useTiles) const{
 		std::vector<vdb::FloatGrid::Ptr> result;
 		try{
 			// need to work on copies, otherwise we'll lose data
 			//printf("%% copying grid ...\n");
-			vdb::FloatGrid::Ptr theGrid = objectGrid->deepCopy();
+			vdb::FloatGrid::Ptr theGrid = objectGrid->deepCopy(), currentCrack;
 			//printf("%% ... have %d active voxels\n",theGrid->activeVoxelCount());
 			// intersect object with fractures
 			for(std::map<unsigned int, vdb::FloatGrid::Ptr>::const_iterator it=
 				crackGrids.begin(); it!=crackGrids.end(); ++it
 			){
+				currentCrack= it->second->deepCopy();
 				//printf("%% intersecting with crack %d ...\n", it->first);
-				vdb::tools::csgIntersection(*theGrid, *(it->second->deepCopy()) );
+				for(vdb::FloatTree::RootNodeType::ChildOnIter cit = objectGrid->tree().beginRootChildren(); cit.test(); ++cit){
+					currentCrack->getAccessor().touchLeaf(cit.getCoord()); // make sure the crack-grid covers the object grid
+					currentCrack->getAccessor().setValueOn(cit.getCoord());
+					// if we find a background value, the sign needs to be flipped
+					if( currentCrack->getAccessor().getValue(cit.getCoord()) == currentCrack->background()/* > crackGrids[i]->voxelSize()[0]*/ ){
+						currentCrack->getAccessor().setValue(cit.getCoord(), -currentCrack->background());
+						// this should not happen, but if it did, we just fixed it
+						// still, let's print a warning
+						printf("\n%% !!! WARNING: VDBWrapper::getSegments: %s has inconsistent tile coverage!\n", currentCrack->getName().c_str());
+					}
+				}
+				currentCrack->signedFloodFill();
+				//Note: in hindsight it might have been more efficient to not flip signs on the crack-grids (ever) and instead use a modified csgIntersection method
+				vdb::tools::csgIntersection(*theGrid, *currentCrack );
 				//printf("%% ... have %d active voxels\n",theGrid->activeVoxelCount());
 			}
 

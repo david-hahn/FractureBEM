@@ -2,7 +2,7 @@
  * File:   VDBWrapper.cpp
  * Author: David
  * 
- * Created on 14. Jänner 2014, 13:47
+ * Created on 14. JÃ¤nner 2014, 13:47
  */
 
 #include "VDBWrapper.h"
@@ -15,10 +15,10 @@
 #include <openvdb/tools/Interpolation.h>
 #include <openvdb/tools/ValueTransformer.h>
 #include <openvdb/math/Operators.h>
+#include <openvdb/tools/LevelSetRebuild.h>
 
 using namespace std;
 using namespace vdb;
-typedef std::map<unsigned int, vdb::FloatGrid::Ptr>::iterator crIt;
 
 namespace FractureSim{
 	const vdb::Vec3d VDBWrapper::ux(1.0,0.0,0.0), VDBWrapper::uy(0.0,1.0,0.0), VDBWrapper::uz(0.0,0.0,1.0);
@@ -91,6 +91,7 @@ namespace FractureSim{
 			//printf("\nroot loop");
 			for(FloatTree::RootNodeType::ChildOnIter cit = objectGrid->tree().beginRootChildren(); cit.test(); ++cit){
 				voxelizer.distGridPtr()->getAccessor().touchLeaf(cit.getCoord()); // make sure the crack-grid covers the object grid
+				voxelizer.distGridPtr()->getAccessor().setValueOn(cit.getCoord());
 			}
 
 #ifdef _MSC_VER
@@ -199,7 +200,9 @@ namespace FractureSim{
 			if(updateSignedCrack) tmpGrid = voxelizer.distGridPtr()->deepCopy();
 
 			for(FloatTree::RootNodeType::ChildOnIter cit = objectGrid->tree().beginRootChildren(); cit.test(); ++cit ){
-                voxelizer.distGridPtr()->getAccessor().touchLeaf(cit.getCoord());
+				//printf("\n%% VDB addCrack touching leaf in root (%d, %d, %d)\n",cit.getCoord()[0],cit.getCoord()[1],cit.getCoord()[2]);
+                voxelizer.distGridPtr()->getAccessor().touchLeaf( cit.getCoord());
+				voxelizer.distGridPtr()->getAccessor().setValueOn(cit.getCoord());
 			}
 #ifdef _MSC_VER
             tools::foreach(voxelizer.distGridPtr()->beginValueAll(),crackUDFtoLS(voxelSize) ); // subtract 0.87*voxelSize and flip sign
@@ -222,6 +225,10 @@ namespace FractureSim{
                 crackGrids[it->first]->setName(tmp.str());
             }else{ // propagated crack
                 tools::csgIntersection(*crackGrids[it->first], *voxelizer.distGridPtr());
+//				for(FloatTree::RootNodeType::ChildOnIter cit = objectGrid->tree().beginRootChildren(); cit.test(); ++cit ){
+//					crackGrids[it->first]->getAccessor().touchLeaf( cit.getCoord());
+//					crackGrids[it->first]->getAccessor().setValueOn(cit.getCoord());
+//				}
 			}
 
 
@@ -514,6 +521,38 @@ namespace FractureSim{
 	//	}
 	//}
 
+	// NEW FOR FractureRB
+	vdb::FloatGrid::Ptr VDBWrapper::maskCracks(vdb::FloatGrid::Ptr surface){
+		vdb::FloatGrid::Ptr result=crackGrids.begin()->second->deepCopy();
+		vdb::FloatGrid::Ptr surfCpy=surface->deepCopy();
+		result->setName("masked_cracks");
+        crIt it=crackGrids.begin(); ++it;
+		for(; it!=crackGrids.end(); ++it){
+			vdb::tools::csgIntersection(*result, *(it->second)->deepCopy());
+        }
+		for(FloatGrid::ValueAllIter vit = result->beginValueAll(); vit.test(); ++vit ){
+			vit.setValue(-*vit); // flip the sign
+		}
+		//for(FloatGrid::ValueAllIter vit = surfCpy->beginValueAll(); vit.test(); ++vit ){
+		//	vit.setValue(*vit+voxelSize); // erode the surface for masking
+		//}
+		vdb::tools::csgIntersection(*result, *surfCpy);
+//		result->prune();
+//		result->treePtr()->pruneInactive();
+		// needs #include <openvdb/tools/LevelSetRebuild.h>
+		result=vdb::tools::levelSetRebuild(*result,0.0,1);
+
+		//// write file for debugging ...
+		//GridPtrVec grids;
+  //      grids.push_back(surface);
+		//grids.push_back(surfCpy);
+		//grids.push_back(result);
+  //      io::File file("debug_masking.vdb");
+  //      file.write(grids);
+  //      file.close();
+
+		return result;
+	}
 
 //******************************************************************************
 //******************************************************************************

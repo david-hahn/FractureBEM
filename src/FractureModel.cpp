@@ -477,12 +477,20 @@ namespace FractureSim{
 	}
 
 	void applyCompressiveFactor(Eigen::Vector3d& K, double cf){
-		if(K[0]<0  && cf>=0.0){ // is compressive (cf must be positive to make sense, otherwise don't change anything)
-			// cf means that compressive toughness is cf times tensile toughness
-            K[0]*=-1.0/cf; // compressive K1 means that the material might be tougher against it
-            K[1]*=-1.0; // K2 and K3 however do not have compression (only left/right, up/down) -- flip the sign but keep the magnitude
-			K[2]*=-1.0;
-			// sign flip is required on all K since we do a max-search later on -- under compression we want a min-search
+		if( (K[0]<0 || cf<1.0)  && cf>=0.0){ // cf must be positive to make sense, otherwise don't change anything
+
+			double th_mx= 2*atan( (K[0] - sqrt(K[0]*K[0] + 8*K[1]*K[1])) / (4*K[1]) );
+			double th_mi= 2*atan( (K[0] + sqrt(K[0]*K[0] + 8*K[1]*K[1])) / (4*K[1]) );
+			double K_mx = K[0]*cos(th_mx*0.5)*cos(th_mx*0.5)*cos(th_mx*0.5) - 3.0*K[1]*sin(th_mx*0.5)*cos(th_mx*0.5)*cos(th_mx*0.5);
+			double K_mi = K[0]*cos(th_mi*0.5)*cos(th_mi*0.5)*cos(th_mi*0.5) - 3.0*K[1]*sin(th_mi*0.5)*cos(th_mi*0.5)*cos(th_mi*0.5);
+
+
+			if( K_mx < (-K_mi/cf) ){ // flip sign if we want to go for the minimum instead
+				// cf means that compressive toughness is cf times tensile toughness
+				K[0]*=-1.0/cf;
+				K[1]*=-1.0/cf; // changed my mind on these - we do need to reduce all SIFs if we commit to going for compressive propagation
+				K[2]*=-1.0/cf;
+			}
         }
 	}
 }

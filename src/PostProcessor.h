@@ -68,13 +68,18 @@ namespace FractureSim{
 
 		/* Compute stresses on triangles in the mesh based on nodal displacements
 		 * and add to VTK data
-         * output-param maxPrincipalStress (terminology of "node_map" is misused here)
-         * is a map<int, vector<double> > that maps element-IDs to 4 double values
-         * the first value is the max. principal stress value, the last 3 values are
-         * the plane-normal across which the principal stress is given.
+         * output-param retValues       (terminology of "node_map" is misused here)
+         * is a map<int, vector<double> > that maps element-IDs to 9 double values:
+         * the first value is the max. principal stress value,
+		 * the next 3 values are the plane-normal across which the principal stress is given;
+		 * the following 4 values are magnitude & normal vector for the min. principal stress
+		 * the last value is a flag: 0 for regular surface elements, >0 for fracture elements
+		 * for fractures, we specify whether max. and min. principal stress reach their largest
+		 * magnitude for the positive or negative side of the fracture (sign of applied COD):
+		 * 1: both positive; 2: max. negative, min. positive; 3: max. pos., min. neg.; 4: both neg.
 		 */
 		int computeSurfaceStresses(
-            node_map& maxPrincipalStress, const vector_type& displacements,
+            node_map& retValues, const vector_type& displacements,
 			const vector_type& crackBaseDisplacements,
             double E=1.0, double nu=0.0, bool addToVTK=false
         );
@@ -155,7 +160,14 @@ namespace FractureSim{
             // now we have a local coordinate system for the edge a-b
         }
 
-		//bool stopAtBoundary( Eigen::Vector3d& p, const Eigen::Vector3d& q, const VDBWrapper& levelSet);
+		// computes SVD of the deformation gradient F = U*S*Vt
+		// and principal stresses P = 2 mu (S-I) + lambda tr(S-I);
+		int computeElementPrincipalStresses(
+			Eigen::Matrix3d& U, Eigen::Matrix3d& S, Eigen::Matrix3d& Vt, Eigen::Matrix3d& P,
+			const Eigen::Vector3d&  a, const Eigen::Vector3d&  b, const Eigen::Vector3d&  c,
+			const Eigen::Vector3d& ua, const Eigen::Vector3d& ub, const Eigen::Vector3d& uc,
+			double mu, double lambda
+		);
     };   
 }
 

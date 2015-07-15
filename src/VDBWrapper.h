@@ -18,6 +18,8 @@
 
 namespace vdb = openvdb::v2_2_0;
 
+typedef std::map<unsigned int, vdb::FloatGrid::Ptr>::iterator crIt;
+
 namespace vdbToolsExt{ // for signedCrackGrids we need to merge two grids taking the value closest to zero at each voxel
 	using namespace vdb;
 	using namespace vdb::tools;
@@ -173,23 +175,78 @@ namespace FractureSim{
 		 * run the segmentation and return raw results
 		 */
 		std::vector<vdb::FloatGrid::Ptr> getSegments(double handleThreshold=0.0, bool useTiles=false) const;
+		
 		/* NEW FOR FractureRB:
 		 * allow access to the objectGrid (stores the surface of the object without any fractures)
 		 */
 		vdb::FloatGrid::Ptr getObjectGrid() {return objectGrid;}
 		void setObjectGrid(vdb::FloatGrid::Ptr grid) { objectGrid = grid; }
-		double getNBHW() {return NBHW;}
+		vdb::math::Transform::Ptr getTransform() {return resXform; }
+
+		/* NEW FOR FractureRB:
+		 * report whether crack self-intersections are ignored (returns true) or handled as normal surface intersections (returns false)
+		 */
+		double ignoreCrackSelfIntersection() {return noSI;}
+		
+		/* NEW FOR FractureRB:
+		 * deep-copy this object's crack grids to the given maps
+		 * newCrackIDs allows to assign new region IDs for the target maps
+		 * input maps will be cleared!
+		 */
+		void copyCrackGrids(
+			std::map<unsigned int, vdb::FloatGrid::Ptr>& crackGrids_,
+			std::map<unsigned int, vdb::FloatGrid::Ptr>& signedCrackGrids_, id_map newCrackIDs){
+			crackGrids_.clear();
+			signedCrackGrids_.clear();
+			for(crIt it=crackGrids.begin(); it!=crackGrids.end(); ++it){
+				crackGrids_[ ((newCrackIDs.count(it->first)>0)?(newCrackIDs[it->first]):(it->first)) ]
+					=it->second->deepCopy();
+			}
+			for(crIt it=signedCrackGrids.begin(); it!=signedCrackGrids.end(); ++it){
+				signedCrackGrids_[ ((newCrackIDs.count(it->first)>0)?(newCrackIDs[it->first]):(it->first)) ]
+					=it->second->deepCopy();
+			}
+			//printf(" (copied %d cracks) ", crackGrids_.size());
+		}
+		
+		/* NEW FOR FractureRB:
+		 * deep-copy this object's crack grids to another VDBWrapper object
+		 * the crack grids of the input object will be cleared!
+		 * newCrackIDs allows to assign new region IDs for the target maps
+		 */
+		void copyCrackGrids( VDBWrapper& other , id_map newCrackIDs ){
+			copyCrackGrids( other.crackGrids, other.signedCrackGrids, newCrackIDs );
+		}
+
+		/* NEW FOR FractureRB:
+		 * write all crack IDs stored in this object into the output param. set
+		 * output set will be cleared first
+		 */
+		void getCrackIDs( std::set<unsigned int>& crackRegions ){
+			crackRegions.clear();
+			for(crIt it=crackGrids.begin(); it!=crackGrids.end(); ++it)
+				crackRegions.insert( it->first );
+		}
+		
+		/* NEW FOR FractureRB:
+		 * build a new grid which contains all cracks stored in this object
+		 * and intersect them with the given surface
+		 */
+		vdb::FloatGrid::Ptr maskCracks(vdb::FloatGrid::Ptr surface);
+		
+		/* NEW FOR FractureRB:
+		 * get a set of nearby triangles for a given point p
+		 * output parameter (tris) will be cleared before writing
+		 * returns a bbox specifying the grid box from which the
+		 * triangle set has been read
+		 */
+		vdb::BBoxd getNearTris(const vdb::Vec3d& p, id_set& tris);
 
     protected:
 		bool noSI;
 		// objectGrid is a (proper) (narrow-band) level-set used for in-/outside test
         vdb::FloatGrid::Ptr objectGrid;
 
-		// no longer using these:
-		// udfGrid is a (narrow-band) unsiged distance field built from the complete mesh
-		//vdb::FloatGrid::Ptr allSurfacesGrid;
-        // closestTri stores which triangle (complete mesh) is the nearest neighbor to each voxel
-		//vdb::Int32Grid::Ptr closestTri;
 		template<typename ValueType> class VdbValueAdapter{
 		public:
 			ValueType& get() const {return data;}

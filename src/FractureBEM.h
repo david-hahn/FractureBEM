@@ -36,6 +36,9 @@ namespace FractureSim{
         inline elem_map& getCrackTipParents(){ return crackTipParents; }
         inline state_map& getCrackTipStates(){ return crackTipStates; }
 		//inline vector_type& getSIFs(){ return sifs; } // old version
+		// NEW FOR FractureRB:
+		inline id_set& getFracturedNodes(){ return fracturedNodes; }
+		inline id_set& getFracturedElems(){ return fracturedElems; }
 
 		unsigned int getActiveCount();
 
@@ -84,8 +87,9 @@ namespace FractureSim{
 
 		/* Add a completely new edge crack, starting from the given element
 		 * in the plane given by its normal vector
+		 * for fracture elements, we can specify to start on the "negative" side of the element
 		 */
-		int startCrack(unsigned int elem, Eigen::Vector3d normal);
+		int startCrack(unsigned int elem, Eigen::Vector3d normal, bool negSide=false);
 		int startCrack(Eigen::Vector3d point, Eigen::Vector3d planeNormal, Eigen::Vector3d tipNormal);
 
 		//ToDo: write comment here
@@ -93,7 +97,7 @@ namespace FractureSim{
 		int writeMesh(std::string filename, double visualQuality=2.0, // visualQuality >1 no output, in [0,1] use VDB adaptive meshing, <0 use quadric decimation
             bool visDisplace=true, bool visCOD=true, bool visClose=false, bool visOBJ=false
         );
-		int writeVDB(std::string filename);
+		int writeVDB(std::string filename, bool updateSeeds=true); //NEW FOR FractureRB: option to suppress updates to the last written file when seeding cracks
 		int writeCrackTip(std::string filename);
 		int innerEvalTest(std::string filename);
 		
@@ -121,9 +125,15 @@ namespace FractureSim{
 		int updateBoundaryData(vect3d_map& newBcData);
 		
 		/* NEW FOR FractureRB:
-		 * allow access to the implicit surface
+		 * allow access to the implicit surface and hi-res crack-front
 		 */
 		VDBWrapper& getLevelSet();
+		SubsampledCrackTip& getHiResCrackTip();
+
+		/* NEW FOR FractureRB:
+		 * report the target edge length in the BEM mesh
+		 */
+		inline double getTargetMeshSize(){ return crackMeshSize; }
 		
 	protected:
         // explicit geometry representation (BEM mesh)

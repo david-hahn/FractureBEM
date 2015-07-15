@@ -36,6 +36,22 @@ namespace FractureSim{
             return VDBWrapper::addToNearTriGrid(nodes, elems, res);
         }
 
+		// NEW FOR FractureRB
+		inline std::vector<vdb::FloatGrid::Ptr> getSegments(double handleThreshold=0.0, bool useTiles=true){
+			return VDBWrapper::getSegments(handleThreshold, useTiles);
+		}
+		// NEW FOR FractureRB
+		inline vdb::FloatGrid::Ptr getObjectGrid(){
+			return VDBWrapper::getObjectGrid();
+		}
+		// NEW FOR FractureRB
+		inline void setObjectGrid(vdb::FloatGrid::Ptr grid){
+			VDBWrapper::setObjectGrid(grid);
+		}
+		// NEW FOR FractureRB
+		inline double getBandwidth(){
+			return VDBWrapper::getBandwidth();
+		}
     };
 }
 #endif	/* VDBLOADER_H */

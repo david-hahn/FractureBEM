@@ -61,6 +61,17 @@ int main(int argc, char* argv[]){ try{
 
 	// intersect object with fractures
 	for(int i=0; i<crackGrids.size(); ++i){
+
+		for(FloatTree::RootNodeType::ChildOnIter cit = objectGrid->tree().beginRootChildren(); cit.test(); ++cit){
+			crackGrids[i]->getAccessor().touchLeaf(cit.getCoord()); // make sure the crack-grid covers the object grid
+			crackGrids[i]->getAccessor().setValueOn(cit.getCoord());
+			// if we find a background value, the sign needs to be flipped
+			if( crackGrids[i]->getAccessor().getValue(cit.getCoord()) == crackGrids[i]->background()/* > crackGrids[i]->voxelSize()[0]*/ ){
+				crackGrids[i]->getAccessor().setValue(cit.getCoord(), -crackGrids[i]->getAccessor().getValue(cit.getCoord()));
+			}
+		}
+		crackGrids[i]->signedFloodFill();
+
 		tools::csgIntersection(*objectGrid, *crackGrids[i]); // don't use negative background values!
 	}
 	grids.push_back(objectGrid->deepCopy());

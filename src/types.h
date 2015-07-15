@@ -34,11 +34,23 @@ namespace FractureSim{
     
     inline id_set nodeSet(elem_map elems){
         id_set nodes;
-        for(elem_map::iterator i = elems.begin();
-            i != elems.end(); ++i)
+        for(elem_map::iterator i = elems.begin(); i != elems.end(); ++i)
             for(elem_map::mapped_type::iterator j = i->second.begin();
                 j != i->second.end(); ++j)
                 nodes.insert(*j);
+        return nodes;
+    }
+
+	// NEW FOR FractureRB:
+	typedef std::pair<unsigned int, unsigned int> edge;
+	typedef std::map<edge, unsigned int> edge_imap;
+
+    inline id_set nodeSet(edge_imap edges){
+        id_set nodes;
+        for(edge_imap::iterator i = edges.begin(); i != edges.end(); ++i){
+			nodes.insert(i->first.first);
+			nodes.insert(i->first.second);
+		}
         return nodes;
     }
 }
