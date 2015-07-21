@@ -5,6 +5,5 @@
   -s 30 -r 10 -R 0.2 -o _results\arm_split ^
   -X (0,70,0,1,0,0,0,-1,0) --no-si
 
-rem checked 17 Feb 2015, 10 steps segments with threshold 0.1
-
 pause
+rem last tested 21-Jul-2015: 10 steps, segments with threshold 0.1

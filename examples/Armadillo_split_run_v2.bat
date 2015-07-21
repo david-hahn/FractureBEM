@@ -7,3 +7,4 @@
 
 
 pause
+rem last tested 21-Jul-2015: 10 steps, segments with threshold 0.1
